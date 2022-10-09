@@ -1,11 +1,18 @@
 import type { Dirent } from "fs";
-import { readdir } from "fs/promises";
+import type { readdir, stat } from "fs/promises";
 import { describe, expect, jest, test } from "@jest/globals";
 import { join } from "path";
-import type { Search } from "./search";
+import type { Callback, Search } from "./search";
+
+const mockReaddir = jest.fn<typeof readdir>();
+const mockStat = jest.fn<typeof stat>();
+jest.mock("fs/promises", () => {
+  return { readdir: mockReaddir, stat: mockStat };
+});
 
 describe("search", () => {
   test("emits a file's full path when one is found", async () => {
+    jest.resetAllMocks();
     const [search, callback] = await setupSearch([
       ".",
       "sample.csproj",
@@ -14,29 +21,33 @@ describe("search", () => {
 
     await search(callback, ".", /\.csproj$/);
 
-    expect(callback.mock.calls.length).toBe(1);
-    expect(callback.mock.calls[0][0]).toBe("sample.csproj");
+    expectCallsContaining(callback, ["sample.csproj"]);
   });
 
   test("searches recursively", async () => {
+    jest.resetAllMocks();
     const [search, callback] = await setupSearch([
       ".",
       "sample.csproj",
+      "siblingSample.csproj",
       ["subProject", "subProject.csproj"],
+      ["deeperProject", ["subFolder", ["lib", "myLib.csproj"]]],
     ]);
 
     await search(callback, ".", /\.csproj$/);
 
-    expect(callback.mock.calls.length).toBe(1);
-    expect(callback.mock.calls[0][0]).toBe("sample.csproj");
+    expectCallsContaining(callback, [
+      "sample.csproj",
+      "siblingSample.csproj",
+      "subProject/subProject.csproj",
+      "deeperProject/subFolder/lib/myLib.csproj",
+    ]);
   });
 });
 
 async function setupSearch(
   setup: ReaddirSetup
 ): Promise<[Search, jest.Mock<(path: string) => void>]> {
-  const mock = jest.fn<typeof readdir>();
-
   const buildPathMap = (root: string, setup: ReaddirSetup): PathMap => {
     const [folderName, ...contents] = setup;
     const folderPath = join(root, folderName);
@@ -48,7 +59,14 @@ async function setupSearch(
             [folderPath]: [...map[folderPath], childItem as unknown as Dirent],
           };
         } else {
-          return { ...map, ...buildPathMap(folderPath, childItem) };
+          return {
+            ...map,
+            ...buildPathMap(folderPath, childItem),
+            [folderPath]: [
+              ...map[folderPath],
+              childItem[0] as unknown as Dirent,
+            ],
+          };
         }
       },
       { [folderPath]: [] } as PathMap
@@ -56,16 +74,23 @@ async function setupSearch(
   };
   const map = buildPathMap(".", setup);
 
-  mock.mockImplementation(((path: string) =>
+  mockReaddir.mockImplementation(((path: string) =>
     Promise.resolve(map[path])) as unknown as typeof readdir);
-  jest.mock("fs/promises", () => {
-    return { readdir: mock };
-  });
+  mockStat.mockImplementation(((path: string) => ({
+    isDirectory: () => path in map,
+  })) as unknown as typeof stat);
+
   return [
     (await import("./search")).default,
     jest.fn<(path: string) => void>(),
   ];
 }
-
 type ReaddirSetup = [string, ...(string | ReaddirSetup)[]];
 type PathMap = { [path: string]: Dirent[] };
+
+function expectCallsContaining(callback: jest.Mock<Callback>, paths: string[]) {
+  expect(callback.mock.calls.length).toBe(paths.length);
+  callback.mock.calls.forEach((call) =>
+    expect(paths.some((path) => call[0] === path))
+  );
+}

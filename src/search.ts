@@ -1,21 +1,27 @@
-import { readdir } from "fs/promises";
+import { readdir, stat } from "fs/promises";
 import { join } from "path";
 
-const search = (
-  callback: (path: string) => unknown,
-  path: string,
-  matcher: RegExp
-) =>
+const search = (callback: Callback, path: string, matcher: RegExp) =>
   new Promise<void>((resolve, reject) =>
     readdir(path)
-      .then((contents) => {
-        contents.forEach(
-          (child) => matcher.test(child) && callback(join(path, child))
-        );
-        resolve();
-      })
+      .then((contents) =>
+        Promise.all(
+          contents.map(async (childName) => {
+            const childPath = join(path, childName);
+            const childStat = await stat(childPath);
+            if (childStat.isDirectory()) {
+              await search(callback, childPath, matcher);
+            } else if (matcher.test(childName)) {
+              callback(join(path, childName));
+            }
+          })
+        )
+          .then(() => resolve())
+          .catch(reject)
+      )
       .catch(reject)
   );
 export default search;
 
+export type Callback = (path: string) => unknown;
 export type Search = typeof search;
