@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { program } from "commander";
-import { add } from "./math";
 
 program.name("Sample CLI");
 
@@ -10,7 +9,7 @@ program
   .argument("a")
   .argument("b")
   .action((a, b) => {
-    console.log(add(a, b));
+    console.log(a + b);
   });
 
 program.parse();
