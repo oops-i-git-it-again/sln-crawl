@@ -3,11 +3,12 @@ import { join } from "path";
 import { Readable, Transform } from "stream";
 
 const search = (path: string, matcher: RegExp) => {
-  const stream = new Transform();
-  stream._transform = (chunk, _, done) => {
-    stream.push(chunk);
-    done();
-  };
+  const stream = new Transform({
+    transform: (chunk, _, done) => {
+      stream.push(chunk);
+      done();
+    },
+  });
 
   (async () => {
     await searchRecursively(path);

@@ -8,20 +8,26 @@ describe("sln-crawl", () => {
     "creates a sln for a simple, single project",
     runSlnCrawlTest("single-project")
   );
+  test(
+    "creates separate sln's for each project found in a single folder",
+    runSlnCrawlTest("multiple-projects-in-same-dir")
+  );
 });
 
 function runSlnCrawlTest(testName: string) {
   return async () => {
     const testDir = join("test", testName);
     const tempDir = join(testDir, "temp");
+    const inputDir = join(testDir, "input");
+    const outputDir = join(testDir, "output");
 
     await (async function setupTestDir() {
-      const inputDir = join(testDir, "input");
-
       await (function cleanup() {
         return Promise.all([
           rmDir(tempDir),
-          [...["bin", "obj"].map((dir) => rmDir(inputDir, dir))],
+          ...[inputDir, outputDir].map((parentDir) =>
+            ["bin", "obj"].map((dir) => rmDir(parentDir, dir))
+          ),
         ]);
       })();
 
@@ -31,7 +37,7 @@ function runSlnCrawlTest(testName: string) {
     await slnCrawl(tempDir);
 
     expect(await getDirectoryContents(tempDir)).toEqual(
-      await getDirectoryContents(join(testDir, "output"))
+      await getDirectoryContents(outputDir)
     );
   };
 }

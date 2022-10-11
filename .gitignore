@@ -1,3 +1,5 @@
 /dist
 /node_modules
+/test/*/*/bin
+/test/*/*/obj
 /test/*/temp
