@@ -1,7 +1,9 @@
 import { cp, readdir, readFile, rm, stat } from "fs/promises";
 import { describe, expect, test } from "@jest/globals";
 import { join } from "path";
+import { finished } from "stream/promises";
 import slnCrawl from "./sln-crawl";
+import search from "./search";
 
 describe("sln-crawl", () => {
   test(
@@ -11,6 +13,10 @@ describe("sln-crawl", () => {
   test(
     "creates separate sln's for each project found in a single folder",
     runSlnCrawlTest("multiple-projects-in-same-dir")
+  );
+  test(
+    "includes project dependencies in each project's solution",
+    runSlnCrawlTest("include-project-dependencies")
   );
 });
 
@@ -22,13 +28,17 @@ function runSlnCrawlTest(testName: string) {
     const outputDir = join(testDir, "output");
 
     await (async function setupTestDir() {
-      await (function cleanup() {
-        return Promise.all([
-          rmDir(tempDir),
-          ...[inputDir, outputDir].map((parentDir) =>
-            ["bin", "obj"].map((dir) => rmDir(parentDir, dir))
-          ),
-        ]);
+      await (async function cleanup() {
+        await rmDir(tempDir);
+
+        const searchStream = search(testDir, /^(?:(?:bin)|(?:obj))$/);
+        const rmPromises: Promise<void>[] = [];
+        searchStream.on("data", (path: string) =>
+          rmPromises.push(rm(path, { recursive: true }).catch(null))
+        );
+
+        await finished(searchStream);
+        await Promise.allSettled(rmPromises);
       })();
 
       await cp(inputDir, tempDir, { recursive: true });

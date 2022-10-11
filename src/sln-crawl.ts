@@ -1,33 +1,62 @@
 import { execa } from "execa";
+import { readFile } from "fs/promises";
 import { EOL } from "os";
 import { resolve } from "path";
 import { Transform } from "stream";
 import { finished } from "stream/promises";
+import { DOMParser } from "@xmldom/xmldom";
+import { select } from "xpath";
 import search from "./search";
 
 const slnCrawl = async (path: string) => {
   const csProjStream = search(path, /\.csproj$/);
 
   const dotNetPromises: Promise<void>[] = [];
-  csProjStream.on("data", (csProjPathBuffer: Buffer) => {
-    const csProjPath = csProjPathBuffer.toString();
-    const logPrefix = `sln-crawl [${csProjPath}]: `;
-    const csProjFileName = csProjPath.split("/").at(-1);
-    if (!csProjFileName) {
-      throw new Error(`Unable to find csproj: ${csProjPath}`);
-    }
-    const projectName = csProjFileName.replace(/(.*)\.csproj$/, "$1");
-
+  csProjStream.on("data", (csProjPathBuffer: Buffer) =>
     dotNetPromises.push(
       (async () => {
+        const csProjPath = csProjPathBuffer.toString();
+        const csProjFolder = resolve(
+          csProjPath.split("/").slice(0, -1).join("/")
+        );
+        const logPrefix = `sln-crawl [${csProjPath}]: `;
+        const csProjFileName = csProjPath.split("/").at(-1);
+        if (!csProjFileName) {
+          throw new Error(`Unable to find csproj: ${csProjPath}`);
+        }
+        const projectName = csProjFileName.replace(/(.*)\.csproj$/, "$1");
+
+        const csProjBuffer = readFile(csProjPath);
         await dotnet("new", "sln", "-n", projectName);
         const slnFileName = `${projectName}.sln`;
         await dotnet("sln", slnFileName, "add", csProjFileName);
 
+        const csProjXml = new DOMParser().parseFromString(
+          (await csProjBuffer).toString()
+        );
+
+        await (async function addReferences() {
+          for (const projReference of select(
+            "/Project/ItemGroup/ProjectReference",
+            csProjXml
+          )) {
+            const referencePath = (projReference as Element).getAttribute(
+              "Include"
+            );
+            if (!referencePath) {
+              throw new Error(
+                `Could not retrieve path from Project reference node: ${
+                  (projReference as Element).outerHTML
+                }`
+              );
+            }
+            await dotnet("sln", slnFileName, "add", referencePath);
+          }
+        })();
+
         async function dotnet(...command: string[]) {
-          const folder = resolve(csProjPath.split("/").slice(0, -1).join("/"));
           const process = execa("dotnet", command, {
-            cwd: folder,
+            cwd: csProjFolder,
             stdout: "pipe",
             stderr: "pipe",
           });
@@ -93,8 +122,8 @@ const slnCrawl = async (path: string) => {
           }
         }
       })()
-    );
-  });
+    )
+  );
 
   await finished(csProjStream);
 
