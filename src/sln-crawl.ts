@@ -18,7 +18,6 @@ const slnCrawl = async (path: string) => {
     }
     const projectName = csProjFileName.replace(/(.*)\.csproj$/, "$1");
 
-    const folder = resolve(csProjPath.split("/").slice(0, -1).join("/"));
     dotNetPromises.push(
       (async () => {
         await dotnet("new", "sln", "-n", projectName);
@@ -26,6 +25,7 @@ const slnCrawl = async (path: string) => {
         await dotnet("sln", slnFileName, "add", csProjFileName);
 
         async function dotnet(...command: string[]) {
+          const folder = resolve(csProjPath.split("/").slice(0, -1).join("/"));
           const process = execa("dotnet", command, {
             cwd: folder,
             stdout: "pipe",
