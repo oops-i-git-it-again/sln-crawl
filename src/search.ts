@@ -20,10 +20,13 @@ const search = (path: string, matcher: RegExp) => {
     await Promise.all(
       contents.map(async (childName) => {
         const childPath = join(path, childName);
+
+        if (matcher.test(childName)) {
+          stream.write(join(path, childName));
+        }
+
         if ((await stat(childPath)).isDirectory()) {
           await searchRecursively(childPath);
-        } else if (matcher.test(childName)) {
-          stream.write(join(path, childName));
         }
       })
     );

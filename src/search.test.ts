@@ -44,6 +44,17 @@ describe("search", () => {
       "deeperProject/subFolder/lib/myLib.csproj",
     ]);
   });
+
+  test("emits directories", async () => {
+    const search = await setupSearch([".", ["directory"]]);
+    const callback = jest.fn<Callback>();
+
+    const searchStream = search(".", /^directory$/);
+    searchStream.on("data", callback);
+
+    await finished(searchStream);
+    expectCalls(callback, ["directory"]);
+  });
 });
 
 async function setupSearch(setup: ReaddirSetup): Promise<Search> {
