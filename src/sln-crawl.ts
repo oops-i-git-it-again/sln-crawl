@@ -32,71 +32,62 @@ const slnCrawl = async (path: string) => {
             stderr: "pipe",
           });
 
-          let lastPipeWasOut = true;
-          let currentOutLine = "";
-          process.stdout?.pipe(
-            new Transform({
-              transform: (chunk: Buffer, encoding: string, done) => {
-                const output = chunk.toString(
-                  encoding === "buffer"
-                    ? undefined
-                    : (encoding as BufferEncoding)
-                );
-                const outputLines = output.split(/\r?\n/);
-                outputLines.slice(0, -1).forEach((line) => {
-                  const totalLine = `${currentOutLine}${line}`;
-                  if (totalLine.trim() !== "") {
-                    console.log(`${logPrefix}${totalLine}`);
-                  }
-                });
-                currentOutLine = outputLines.at(-1) ?? "";
-                lastPipeWasOut = true;
+          process.stdout?.pipe(createConsoleStream("log"));
+          process.stderr?.pipe(createConsoleStream("error"));
+
+          await process;
+          process.stdout && (await finished(process.stdout));
+          process.stderr && (await finished(process.stderr));
+
+          function createConsoleStream(func: "log" | "error") {
+            let currentLine = "";
+            const transform = new Transform({
+              transform: (chunk, encoding, done) => {
+                transform.push(chunk, encoding);
                 done();
               },
-            })
-          );
-          let currentErrLine = "";
-          const errorTransform = new Transform({
-            transform: (chunk: Buffer, encoding: string, done) => {
-              const output = chunk.toString(
-                encoding === "buffer" ? undefined : (encoding as BufferEncoding)
-              );
-              const outputLines = output.split(/\r?\n/);
-              outputLines.slice(0, -1).forEach((line) => {
-                const totalLine = `${currentErrLine}${line}`;
-                if (totalLine.trim() !== "") {
-                  console.error(`${logPrefix}${totalLine}`);
+            });
+
+            transform.on("data", (data) => {
+              let dataString: string;
+              if (typeof data === "string") {
+                dataString = data;
+              } else if (Object.getPrototypeOf(data) === Buffer.prototype) {
+                dataString = (data as Buffer).toString();
+              } else {
+                throw new Error(
+                  `Unexpected stream data type: ${typeof data}; ${Object.getPrototypeOf(
+                    data
+                  )}`
+                );
+              }
+              const lines = dataString.split(/\r?\n/);
+              lines.slice(0, -1).forEach((line, index) => {
+                write(`${currentLine}${line}`);
+                if (index === 0) {
+                  currentLine = "";
                 }
               });
-              currentErrLine = outputLines.at(-1) ?? "";
-              lastPipeWasOut = false;
-              done();
-            },
-          });
-          process.stderr?.pipe(errorTransform);
+              if (lines.length > 0) {
+                currentLine = lines.at(-1) ?? "";
+              }
+            });
 
-          try {
-            await process;
-          } finally {
-            if (process.stderr) {
-              await finished(process.stderr);
+            transform.on("close", writeFinalLine);
+            transform.on("end", writeFinalLine);
+
+            return transform;
+
+            function write(message: string) {
+              if (message.trim() !== "") {
+                console[func](`${logPrefix}${message}`);
+              }
             }
-            if (process.stdout) {
-              await finished(process.stdout);
-            }
-            if (lastPipeWasOut) {
-              if (currentErrLine.trim() !== "") {
-                console.error(`${logPrefix}${currentErrLine}`);
-              }
-              if (currentOutLine.trim() !== "") {
-                console.log(`${logPrefix}${currentOutLine}`);
-              }
-            } else {
-              if (currentOutLine.trim() !== "") {
-                console.log(`${logPrefix}${currentOutLine}`);
-              }
-              if (currentErrLine.trim() !== "") {
-                console.error(`${logPrefix}${currentErrLine}`);
+
+            function writeFinalLine() {
+              if (currentLine.trim() !== "") {
+                write(currentLine);
+                currentLine = "";
               }
             }
           }
@@ -106,6 +97,7 @@ const slnCrawl = async (path: string) => {
   });
 
   await finished(csProjStream);
+
   const results = await Promise.allSettled(dotNetPromises);
   if (results.some((result) => result.status === "rejected")) {
     throw new Error(
