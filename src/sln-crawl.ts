@@ -26,23 +26,26 @@ const slnCrawl = async (path: string) => {
         }
         const projectName = csProjFileName.replace(/(.*)\.csproj$/, "$1");
 
-        const csProjBuffer = readFile(csProjPath);
         await dotnet("new", "sln", "-n", projectName);
         const slnFileName = `${projectName}.sln`;
         await dotnet("sln", slnFileName, "add", csProjFileName);
 
-        const csProjXml = new DOMParser().parseFromString(
-          (await csProjBuffer).toString()
-        );
+        const referencesAdded = new Set<string>([csProjPath]);
+        await addReferences(csProjPath);
 
-        await (async function addReferences() {
+        async function addReferences(csProjPath: string) {
+          const csProjBuffer = await readFile(csProjPath);
+          const csProjXml = new DOMParser().parseFromString(
+            csProjBuffer.toString()
+          );
+
           for (const projReference of select(
             "/Project/ItemGroup/ProjectReference",
             csProjXml
           )) {
-            const referencePath = (projReference as Element).getAttribute(
-              "Include"
-            );
+            const referencePath = (projReference as Element)
+              .getAttribute("Include")
+              ?.replaceAll(/\\/g, "/");
             if (!referencePath) {
               throw new Error(
                 `Could not retrieve path from Project reference node: ${
@@ -50,9 +53,18 @@ const slnCrawl = async (path: string) => {
                 }`
               );
             }
+            const referenceAbsolutePath = resolve(
+              csProjPath.split("/").slice(0, -1).join("/"),
+              referencePath
+            );
+            if (referencesAdded.has(referenceAbsolutePath)) {
+              continue;
+            }
             await dotnet("sln", slnFileName, "add", referencePath);
+            referencesAdded.add(referenceAbsolutePath);
+            await addReferences(referenceAbsolutePath);
           }
-        })();
+        }
 
         async function dotnet(...command: string[]) {
           const process = execa("dotnet", command, {

@@ -18,6 +18,10 @@ describe("sln-crawl", () => {
     "includes project dependencies in each project's solution",
     runSlnCrawlTest("include-project-dependencies")
   );
+  test(
+    "recursively includes project dependencies",
+    runSlnCrawlTest("recursively-crawl-dependencies")
+  );
 });
 
 function runSlnCrawlTest(testName: string) {
@@ -33,9 +37,7 @@ function runSlnCrawlTest(testName: string) {
 
         const searchStream = search(testDir, /^(?:(?:bin)|(?:obj))$/);
         const rmPromises: Promise<void>[] = [];
-        searchStream.on("data", (path: string) =>
-          rmPromises.push(rm(path, { recursive: true }).catch(null))
-        );
+        searchStream.on("data", (path: string) => rmPromises.push(rmDir(path)));
 
         await finished(searchStream);
         await Promise.allSettled(rmPromises);
@@ -53,9 +55,7 @@ function runSlnCrawlTest(testName: string) {
 }
 
 function rmDir(...path: string[]) {
-  return rm(join(...path), { recursive: true }).catch(() => {
-    // dir may not exist
-  });
+  return rm(join(...path), { recursive: true }).catch(null);
 }
 
 async function getDirectoryContents(
@@ -65,56 +65,62 @@ async function getDirectoryContents(
   return {
     ...(excludeName ? {} : { name: path.at(-1) }),
     type: "directory",
-    contents: await Promise.all(
-      (
-        await readdir(path)
-      ).map(async (childItem) => {
-        return (await stat(join(path, childItem))).isDirectory()
-          ? getDirectoryContents(join(path, childItem), false)
-          : {
-              name: childItem,
-              type: "file",
-              contents: await (async () => {
-                const lines = (await readFile(join(path, childItem)))
-                  .toString()
-                  .split(/\r?\n/);
-                if (/\.sln$/.test(childItem)) {
-                  const internalProjectIds: { id: string; name: string }[] = [];
-                  lines
-                    .filter((line) => line.startsWith("Project("))
-                    .forEach((line) => {
-                      const regex =
-                        /^Project\("{[^}]*}"\) = "([^"]+)", "[^"]+", "{([^}]*)}"$/.exec(
-                          line
-                        );
-                      if (!regex) {
-                        throw new Error(
-                          `Could not parse project line: ${line}`
-                        );
-                      }
-                      internalProjectIds.push({
-                        name: regex[1],
-                        id: regex[2],
+    contents: (
+      await Promise.all(
+        (
+          await readdir(path)
+        ).map(async (childItem) => {
+          return (await stat(join(path, childItem))).isDirectory()
+            ? getDirectoryContents(join(path, childItem), false)
+            : {
+                name: childItem,
+                type: "file",
+                contents: await (async () => {
+                  const lines = (await readFile(join(path, childItem)))
+                    .toString()
+                    .split(/\r?\n/);
+                  if (/\.sln$/.test(childItem)) {
+                    const internalProjectIds: { id: string; name: string }[] =
+                      [];
+                    lines
+                      .filter((line) => line.startsWith("Project("))
+                      .forEach((line) => {
+                        const regex =
+                          /^Project\("{[^}]*}"\) = "([^"]+)", "[^"]+", "{([^}]*)}"$/.exec(
+                            line
+                          );
+                        if (!regex) {
+                          throw new Error(
+                            `Could not parse project line: ${line}`
+                          );
+                        }
+                        internalProjectIds.push({
+                          name: regex[1],
+                          id: regex[2],
+                        });
                       });
+                    lines.forEach((line, index) => {
+                      const newLine = internalProjectIds.reduce(
+                        (newLine, internalProjectId) =>
+                          newLine.replaceAll(
+                            internalProjectId.id,
+                            `{{ ${internalProjectId.name} INTERNAL ID }}`
+                          ),
+                        line
+                      );
+                      if (line !== newLine) {
+                        lines[index] = newLine;
+                      }
                     });
-                  lines.forEach((line, index) => {
-                    const newLine = internalProjectIds.reduce(
-                      (newLine, internalProjectId) =>
-                        newLine.replaceAll(
-                          internalProjectId.id,
-                          `{{ ${internalProjectId.name} INTERNAL ID }}`
-                        ),
-                      line
-                    );
-                    if (line !== newLine) {
-                      lines[index] = newLine;
-                    }
-                  });
-                }
-                return lines;
-              })(),
-            };
-      })
+                  }
+                  return lines;
+                })(),
+              };
+        })
+      )
+    ).reduce(
+      (contents, item) => ({ ...contents, [item.name ?? ""]: item }),
+      {}
     ),
   };
 }
@@ -123,6 +129,6 @@ type DirectoryContents =
   | {
       name?: string;
       type: "directory";
-      contents: DirectoryContents[];
+      contents: { [name: string]: DirectoryContents };
     }
   | { name: string; type: "file"; contents: string[] };
