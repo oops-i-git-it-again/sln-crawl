@@ -1,17 +1,18 @@
 import { cp, readdir, readFile, rm, stat } from "fs/promises";
-import { describe, expect, test } from "@jest/globals";
+import { describe, expect, jest, test } from "@jest/globals";
 import { join } from "path";
 import { finished } from "stream/promises";
 import slnCrawl from "./sln-crawl";
 import search from "./search";
 
 describe("sln-crawl", () => {
+  jest.setTimeout(20000);
   test(
     "creates a sln for a simple, single project",
     runSlnCrawlTest("single-project")
   );
   test(
-    "creates separate sln's for each project found in a single folder",
+    "creates separate sln files for each project found in a single folder",
     runSlnCrawlTest("multiple-projects-in-same-dir")
   );
   test(
@@ -22,6 +23,10 @@ describe("sln-crawl", () => {
     "recursively includes project dependencies",
     runSlnCrawlTest("recursively-crawl-dependencies")
   );
+  /*test(
+    "adds test projects that reference sln projects and does not make sln files for test projects",
+    runSlnCrawlTest("test-projects")
+  );*/
 });
 
 function runSlnCrawlTest(testName: string) {
@@ -37,7 +42,9 @@ function runSlnCrawlTest(testName: string) {
 
         const searchStream = search(testDir, /^(?:(?:bin)|(?:obj))$/);
         const rmPromises: Promise<void>[] = [];
-        searchStream.on("data", (path: string) => rmPromises.push(rmDir(path)));
+        searchStream.on("data", (path: string) =>
+          rmPromises.push(rmDir(path.toString()))
+        );
 
         await finished(searchStream);
         await Promise.allSettled(rmPromises);
@@ -55,7 +62,11 @@ function runSlnCrawlTest(testName: string) {
 }
 
 function rmDir(...path: string[]) {
-  return rm(join(...path), { recursive: true }).catch(null);
+  return rm(join(...path), { recursive: true }).catch((error) => {
+    if (!("code" in error && error.code === "ENOENT")) {
+      throw error;
+    }
+  });
 }
 
 async function getDirectoryContents(
