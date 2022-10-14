@@ -1,68 +1,50 @@
+import assert from "assert";
 import { execa } from "execa";
-import { readFile } from "fs/promises";
-import { EOL } from "os";
-import { resolve } from "path";
+import { relative, resolve } from "path";
+import { cwd } from "process";
 import { Transform } from "stream";
 import { finished } from "stream/promises";
-import { DOMParser } from "@xmldom/xmldom";
-import { select } from "xpath";
-import search from "./search";
+import getProjectMetadata from "./get-project-metadata";
+import assertResultsFulfilled from "./assert-results-fulfilled";
 
 const slnCrawl = async (path: string) => {
-  const csProjStream = search(path, /\.csproj$/);
+  const projectMetadata = await getProjectMetadata(path);
 
-  const dotNetPromises: Promise<void>[] = [];
-  csProjStream.on("data", (csProjPathBuffer: Buffer) =>
-    dotNetPromises.push(
-      (async () => {
-        const csProjPath = csProjPathBuffer.toString();
+  assertResultsFulfilled(
+    await Promise.allSettled(
+      Object.keys(projectMetadata).map(async (targetPath) => {
         const csProjFolder = resolve(
-          csProjPath.split("/").slice(0, -1).join("/")
+          targetPath.split("/").slice(0, -1).join("/")
         );
-        const logPrefix = `sln-crawl [${csProjPath}]: `;
-        const csProjFileName = csProjPath.split("/").at(-1);
-        if (!csProjFileName) {
-          throw new Error(`Unable to find csproj: ${csProjPath}`);
-        }
+        const logPrefix = `sln-crawl [${targetPath}]: `;
+        const csProjFileName = targetPath.split("/").at(-1);
+        assert(csProjFileName !== undefined);
         const projectName = csProjFileName.replace(/(.*)\.csproj$/, "$1");
 
         await dotnet("new", "sln", "-n", projectName);
         const slnFileName = `${projectName}.sln`;
         await dotnet("sln", slnFileName, "add", csProjFileName);
 
-        const referencesAdded = new Set<string>([csProjPath]);
-        await addReferences(csProjPath);
+        const referencesAdded = new Set<string>([targetPath]);
+        const targetFolder = resolve(
+          targetPath.split("/").slice(0, -1).join("/")
+        );
+        await addReferences(targetPath);
 
-        async function addReferences(csProjPath: string) {
-          const csProjBuffer = await readFile(csProjPath);
-          const csProjXml = new DOMParser().parseFromString(
-            csProjBuffer.toString()
-          );
-
-          for (const projReference of select(
-            "/Project/ItemGroup/ProjectReference",
-            csProjXml
-          )) {
-            const referencePath = (projReference as Element)
-              .getAttribute("Include")
-              ?.replaceAll(/\\/g, "/");
-            if (!referencePath) {
-              throw new Error(
-                `Could not retrieve path from Project reference node: ${
-                  (projReference as Element).outerHTML
-                }`
-              );
-            }
-            const referenceAbsolutePath = resolve(
-              csProjPath.split("/").slice(0, -1).join("/"),
-              referencePath
+        async function addReferences(path: string) {
+          for (const relativePath of projectMetadata[path].values()) {
+            const absolutePath = resolve(
+              path.split("/").slice(0, -1).join("/"),
+              relativePath
             );
-            if (referencesAdded.has(referenceAbsolutePath)) {
+            const relativePathToTarget = relative(targetFolder, absolutePath);
+            const relativePathToCwd = relative(cwd(), absolutePath);
+            if (referencesAdded.has(relativePathToCwd)) {
               continue;
             }
-            await dotnet("sln", slnFileName, "add", referencePath);
-            referencesAdded.add(referenceAbsolutePath);
-            await addReferences(referenceAbsolutePath);
+            await dotnet("sln", slnFileName, "add", relativePathToTarget);
+            referencesAdded.add(relativePathToCwd);
+            await addReferences(relativePathToCwd);
           }
         }
 
@@ -133,20 +115,8 @@ const slnCrawl = async (path: string) => {
             }
           }
         }
-      })()
+      })
     )
   );
-
-  await finished(csProjStream);
-
-  const results = await Promise.allSettled(dotNetPromises);
-  if (results.some((result) => result.status === "rejected")) {
-    throw new Error(
-      results
-        .filter((result) => result.status === "rejected")
-        .map((result) => (result as PromiseRejectedResult).reason)
-        .join(EOL)
-    );
-  }
 };
 export default slnCrawl;
