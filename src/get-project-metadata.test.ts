@@ -4,20 +4,53 @@ import getProjectMetadata, { ProjectMetadata } from "./get-project-metadata";
 
 describe("getProjectMetadata", () => {
   testGetProjectMetadata("single-project", {
-    "test/single-project/input/ConsoleApp.csproj": new Set(),
+    "ConsoleApp.csproj": {},
   });
   testGetProjectMetadata("include-project-dependencies", {
-    "test/include-project-dependencies/input/ConsoleApp/ConsoleApp.csproj":
-      new Set(["../ClassLib/ClassLib.csproj"]),
-    "test/include-project-dependencies/input/ClassLib/ClassLib.csproj":
-      new Set(),
+    "ConsoleApp/ConsoleApp.csproj": {
+      dependencies: new Set(["ClassLib/ClassLib.csproj"]),
+    },
+    "ClassLib/ClassLib.csproj": {},
+  });
+  testGetProjectMetadata("test-projects", {
+    "ConsoleApp/ConsoleApp.csproj": {
+      testProjects: new Set([
+        "ConsoleApp.MsTest/ConsoleApp.MsTest.csproj",
+        "ConsoleApp.NUnit/ConsoleApp.NUnit.csproj",
+        "ConsoleApp.XUnit/ConsoleApp.XUnit.csproj",
+      ]),
+    },
   });
 });
 
 function testGetProjectMetadata(testName: string, expected: ProjectMetadata) {
   test(testName, async () =>
     expect(await getProjectMetadata(join("test", testName, "input"))).toEqual(
-      expected
+      Object.fromEntries(
+        Object.entries(expected).map(([path, metadata]) => [
+          join("test", testName, "input", path),
+          {
+            ...prependPathsToSet(metadata, "dependencies"),
+            ...prependPathsToSet(metadata, "testProjects"),
+          },
+        ])
+      )
     )
   );
+
+  function prependPathsToSet(
+    metadata: ProjectMetadata[string],
+    property: keyof ProjectMetadata[string]
+  ) {
+    const paths = metadata[property];
+    return paths
+      ? {
+          [property]: new Set(
+            [...paths.values()].map((path) =>
+              join("test", testName, "input", path)
+            )
+          ),
+        }
+      : {};
+  }
 }
