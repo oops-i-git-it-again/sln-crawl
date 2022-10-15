@@ -20,6 +20,15 @@ describe("getProjectMetadata", () => {
         "ConsoleApp.XUnit/ConsoleApp.XUnit.csproj",
       ]),
     },
+    "ConsoleApp.MsTest/ConsoleApp.MsTest.csproj": {
+      dependencies: new Set(["ConsoleApp/ConsoleApp.csproj"]),
+    },
+    "ConsoleApp.NUnit/ConsoleApp.NUnit.csproj": {
+      dependencies: new Set(["ConsoleApp/ConsoleApp.csproj"]),
+    },
+    "ConsoleApp.XUnit/ConsoleApp.XUnit.csproj": {
+      dependencies: new Set(["ConsoleApp/ConsoleApp.csproj"]),
+    },
   });
 });
 

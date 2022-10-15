@@ -48,18 +48,17 @@ const getProjectMetadata = async (path: string): Promise<ProjectMetadata> => {
             }
             metadata[dependency].testProjects?.add(csProjPath);
           }
-        } else {
-          if (dependencies.length > 0) {
-            if (csProjPath in metadata) {
-              metadata[csProjPath].dependencies = new Set(dependencies);
-            } else {
-              metadata[csProjPath] = {
-                dependencies: new Set(dependencies),
-              };
-            }
-          } else if (!(csProjPath in metadata)) {
-            metadata[csProjPath] = {};
+        }
+        if (dependencies.length > 0) {
+          if (csProjPath in metadata) {
+            metadata[csProjPath].dependencies = new Set(dependencies);
+          } else {
+            metadata[csProjPath] = {
+              dependencies: new Set(dependencies),
+            };
           }
+        } else if (!(csProjPath in metadata)) {
+          metadata[csProjPath] = {};
         }
       })(pathBuffer.toString())
     )
