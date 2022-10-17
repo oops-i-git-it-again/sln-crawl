@@ -22,12 +22,15 @@ describe("getProjectMetadata", () => {
     },
     "ConsoleApp.MsTest/ConsoleApp.MsTest.csproj": {
       dependencies: new Set(["ConsoleApp/ConsoleApp.csproj"]),
+      isTestProject: true,
     },
     "ConsoleApp.NUnit/ConsoleApp.NUnit.csproj": {
       dependencies: new Set(["ConsoleApp/ConsoleApp.csproj"]),
+      isTestProject: true,
     },
     "ConsoleApp.XUnit/ConsoleApp.XUnit.csproj": {
       dependencies: new Set(["ConsoleApp/ConsoleApp.csproj"]),
+      isTestProject: true,
     },
   });
 });
@@ -39,6 +42,7 @@ function testGetProjectMetadata(testName: string, expected: ProjectMetadata) {
         Object.entries(expected).map(([path, metadata]) => [
           join("test", testName, "input", path),
           {
+            ...metadata,
             ...prependPathsToSet(metadata, "dependencies"),
             ...prependPathsToSet(metadata, "testProjects"),
           },
@@ -49,7 +53,10 @@ function testGetProjectMetadata(testName: string, expected: ProjectMetadata) {
 
   function prependPathsToSet(
     metadata: ProjectMetadata[string],
-    property: keyof ProjectMetadata[string]
+    property: keyof Pick<
+      ProjectMetadata[string],
+      "dependencies" | "testProjects"
+    >
   ) {
     const paths = metadata[property];
     return paths

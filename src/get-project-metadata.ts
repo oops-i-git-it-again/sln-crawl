@@ -30,25 +30,6 @@ const getProjectMetadata = async (path: string): Promise<ProjectMetadata> => {
             )
           );
         });
-        if (
-          (function isTestProject() {
-            return (
-              select(
-                '/Project/ItemGroup/PackageReference[@Include="Microsoft.NET.Test.Sdk"]',
-                projectXml
-              ).length > 0
-            );
-          })()
-        ) {
-          for (const dependency of dependencies) {
-            if (!(dependency in metadata)) {
-              metadata[dependency] = { testProjects: new Set() };
-            } else if (!("testProjects" in metadata[dependency])) {
-              metadata[dependency].testProjects = new Set();
-            }
-            metadata[dependency].testProjects?.add(csProjPath);
-          }
-        }
         if (dependencies.length > 0) {
           if (csProjPath in metadata) {
             metadata[csProjPath].dependencies = new Set(dependencies);
@@ -59,6 +40,26 @@ const getProjectMetadata = async (path: string): Promise<ProjectMetadata> => {
           }
         } else if (!(csProjPath in metadata)) {
           metadata[csProjPath] = {};
+        }
+        if (
+          (function isTestProject() {
+            return (
+              select(
+                '/Project/ItemGroup/PackageReference[@Include="Microsoft.NET.Test.Sdk"]',
+                projectXml
+              ).length > 0
+            );
+          })()
+        ) {
+          metadata[csProjPath].isTestProject = true;
+          for (const dependency of dependencies) {
+            if (!(dependency in metadata)) {
+              metadata[dependency] = { testProjects: new Set() };
+            } else if (!("testProjects" in metadata[dependency])) {
+              metadata[dependency].testProjects = new Set();
+            }
+            metadata[dependency].testProjects?.add(csProjPath);
+          }
         }
       })(pathBuffer.toString())
     )
@@ -71,7 +72,11 @@ const getProjectMetadata = async (path: string): Promise<ProjectMetadata> => {
 export default getProjectMetadata;
 
 export type ProjectMetadata = {
-  [path: string]: { dependencies?: Set<string>; testProjects?: Set<string> };
+  [path: string]: {
+    dependencies?: Set<string>;
+    testProjects?: Set<string>;
+    isTestProject?: boolean;
+  };
 };
 
 function assertIsAttribute(

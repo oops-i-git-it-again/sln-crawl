@@ -11,6 +11,10 @@ const slnCrawl = async (path: string) => {
   assertResultsFulfilled(
     await Promise.allSettled(
       Object.keys(projectMetadata).map(async (targetPath) => {
+        if (projectMetadata[targetPath].isTestProject) {
+          return;
+        }
+
         const csProjFolder = resolve(
           targetPath.split("/").slice(0, -1).join("/")
         );

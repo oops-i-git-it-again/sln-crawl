@@ -1,9 +1,11 @@
-import { cp, readdir, readFile, rm, stat } from "fs/promises";
+import { cp, rm } from "fs/promises";
 import { describe, expect, jest, test } from "@jest/globals";
-import { join } from "path";
+import { join, relative } from "path";
 import { finished } from "stream/promises";
 import slnCrawl from "./sln-crawl";
 import search from "./search";
+import isNodeError from "./is-node-error";
+import parseSln, { Sln } from "./parse-sln";
 
 describe("sln-crawl", () => {
   jest.setTimeout(20000);
@@ -23,10 +25,10 @@ describe("sln-crawl", () => {
     "recursively includes project dependencies",
     runSlnCrawlTest("recursively-crawl-dependencies")
   );
-  /*test(
+  test(
     "adds test projects that reference sln projects and does not make sln files for test projects",
     runSlnCrawlTest("test-projects")
-  );*/
+  );
   test("updates existing sln files", runSlnCrawlTest("update-existing-sln"));
 });
 
@@ -56,91 +58,35 @@ function runSlnCrawlTest(testName: string) {
 
     await slnCrawl(tempDir);
 
-    expect(await getDirectoryContents(tempDir)).toEqual(
-      await getDirectoryContents(outputDir)
+    expect(await getParsedSlns(tempDir)).toEqual(
+      await getParsedSlns(outputDir)
     );
   };
 }
 
-function rmDir(...path: string[]) {
-  return rm(join(...path), { recursive: true }).catch((error) => {
-    if (!("code" in error && error.code === "ENOENT")) {
+async function rmDir(...path: string[]) {
+  try {
+    return await rm(join(...path), { recursive: true });
+  } catch (error: unknown) {
+    if (!(isNodeError(error) && error.code === "ENOENT")) {
       throw error;
     }
-  });
+  }
 }
 
-async function getDirectoryContents(
-  path: string,
-  excludeName = true
-): Promise<DirectoryContents> {
-  return {
-    ...(excludeName ? {} : { name: path.at(-1) }),
-    type: "directory",
-    contents: (
-      await Promise.all(
-        (
-          await readdir(path)
-        ).map(async (childItem) => {
-          return (await stat(join(path, childItem))).isDirectory()
-            ? getDirectoryContents(join(path, childItem), false)
-            : {
-                name: childItem,
-                type: "file",
-                contents: await (async () => {
-                  const lines = (await readFile(join(path, childItem)))
-                    .toString()
-                    .split(/\r?\n/);
-                  if (/\.sln$/.test(childItem)) {
-                    const internalProjectIds: { id: string; name: string }[] =
-                      [];
-                    lines
-                      .filter((line) => line.startsWith("Project("))
-                      .forEach((line) => {
-                        const regex =
-                          /^Project\("{[^}]*}"\) = "([^"]+)", "[^"]+", "{([^}]*)}"$/.exec(
-                            line
-                          );
-                        if (!regex) {
-                          throw new Error(
-                            `Could not parse project line: ${line}`
-                          );
-                        }
-                        internalProjectIds.push({
-                          name: regex[1],
-                          id: regex[2],
-                        });
-                      });
-                    lines.forEach((line, index) => {
-                      const newLine = internalProjectIds.reduce(
-                        (newLine, internalProjectId) =>
-                          newLine.replaceAll(
-                            internalProjectId.id,
-                            `{{ ${internalProjectId.name} INTERNAL ID }}`
-                          ),
-                        line
-                      );
-                      if (line !== newLine) {
-                        lines[index] = newLine;
-                      }
-                    });
-                  }
-                  return lines;
-                })(),
-              };
-        })
-      )
-    ).reduce(
-      (contents, item) => ({ ...contents, [item.name ?? ""]: item }),
-      {}
-    ),
-  };
+async function getParsedSlns(path: string) {
+  const parseSlnPromises: Promise<void>[] = [];
+  const parsedSlns: { [path: string]: Sln } = {};
+  const slnSearch = search(path, /\.sln$/);
+  slnSearch.on("data", (slnPathBuffer: Buffer) =>
+    parseSlnPromises.push(
+      (async () => {
+        const slnPath = slnPathBuffer.toString();
+        parsedSlns[relative(path, slnPath)] = await parseSln(slnPath);
+      })()
+    )
+  );
+  await finished(slnSearch);
+  await Promise.all(parseSlnPromises);
+  return parsedSlns;
 }
-
-type DirectoryContents =
-  | {
-      name?: string;
-      type: "directory";
-      contents: { [name: string]: DirectoryContents };
-    }
-  | { name: string; type: "file"; contents: string[] };
