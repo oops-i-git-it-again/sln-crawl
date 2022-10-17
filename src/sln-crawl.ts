@@ -1,8 +1,9 @@
 import assert from "assert";
-import { dirname, relative, resolve } from "path";
+import { dirname, join, relative, resolve } from "path";
 import getProjectMetadata from "./get-project-metadata";
 import assertResultsFulfilled from "./assert-results-fulfilled";
 import createDotnetCommand from "./create-dotnet-command";
+import exists from "./exists";
 
 const slnCrawl = async (path: string) => {
   const projectMetadata = await getProjectMetadata(path);
@@ -19,8 +20,11 @@ const slnCrawl = async (path: string) => {
         assert(csProjFileName !== undefined);
         const projectName = csProjFileName.replace(/(.*)\.csproj$/, "$1");
 
-        await dotnet("new", "sln", "-n", projectName);
         const slnFileName = `${projectName}.sln`;
+
+        if (!(await exists(join(csProjFolder, slnFileName)))) {
+          await dotnet("new", "sln", "-n", projectName);
+        }
         await dotnet("sln", slnFileName, "add", csProjFileName);
 
         const referencesAdded = new Set<string>([targetPath]);

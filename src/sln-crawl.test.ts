@@ -6,7 +6,7 @@ import slnCrawl from "./sln-crawl";
 import search from "./search";
 
 describe("sln-crawl", () => {
-  jest.setTimeout(1 << 30);
+  jest.setTimeout(20000);
   test(
     "creates a sln for a simple, single project",
     runSlnCrawlTest("single-project")
@@ -27,6 +27,7 @@ describe("sln-crawl", () => {
     "adds test projects that reference sln projects and does not make sln files for test projects",
     runSlnCrawlTest("test-projects")
   );*/
+  test("updates existing sln files", runSlnCrawlTest("update-existing-sln"));
 });
 
 function runSlnCrawlTest(testName: string) {
