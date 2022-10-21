@@ -1,0 +1,14 @@
+name: PR
+
+on:
+  pull_request_target:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: oops-i-git-it-again/actions/.github/actions/npm_verify@main
+        with:
+          ref: ${{ github.head_ref }}

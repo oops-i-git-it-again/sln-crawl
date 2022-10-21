@@ -1,0 +1,12 @@
+name: CI
+
+on:
+  push:
+
+jobs:
+  release:
+    uses: oops-i-git-it-again/actions/.github/workflows/npm_bump_release.yml@main
+    with:
+      ref: ${{ github.ref }}
+      package_name: sln-crawl
+    secrets: inherit
