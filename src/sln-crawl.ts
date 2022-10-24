@@ -1,9 +1,12 @@
 import assert from "assert";
 import { dirname, join, relative, resolve } from "path";
+import { platform } from 'node:process';
 import getProjectMetadata from "./get-project-metadata";
 import assertResultsFulfilled from "./assert-results-fulfilled";
 import createDotnetCommand from "./create-dotnet-command";
 import exists from "./exists";
+
+const pathDelim = platform === 'win32' ? "\\" : "/";
 
 const slnCrawl = async (path: string) => {
   const projectMetadata = await getProjectMetadata(path);
@@ -15,12 +18,13 @@ const slnCrawl = async (path: string) => {
           return;
         }
 
+        
         const csProjFolder = resolve(
-          targetPath.split("/").slice(0, -1).join("/")
+          targetPath.split(pathDelim).slice(0, -1).join(pathDelim)
         );
         const logPrefix = `sln-crawl [${targetPath}]: `;
         const dotnet = createDotnetCommand({ cwd: csProjFolder, logPrefix });
-        const csProjFileName = targetPath.split("/").at(-1);
+        const csProjFileName = targetPath.split(pathDelim).at(-1);
         assert(csProjFileName !== undefined);
         const projectName = csProjFileName.replace(/(.*)\.csproj$/, "$1");
 
