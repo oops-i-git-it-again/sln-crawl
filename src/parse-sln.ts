@@ -8,8 +8,11 @@ const parseSln = async (path: PathLike): Promise<Sln> => {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     let regexResult: RegExpExecArray | null;
-    if (line.includes("# Visual Studio Version") || line.includes("VisualStudioVersion =")) {
-      continue
+    if (
+      line.includes("# Visual Studio Version") ||
+      line.includes("VisualStudioVersion =")
+    ) {
+      continue;
     }
     if (
       (regexResult =

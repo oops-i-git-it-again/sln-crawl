@@ -1,12 +1,12 @@
 import assert from "assert";
 import { dirname, join, relative, resolve } from "path";
-import { platform } from 'node:process';
+import { platform } from "process";
 import getProjectMetadata from "./get-project-metadata";
 import assertResultsFulfilled from "./assert-results-fulfilled";
 import createDotnetCommand from "./create-dotnet-command";
 import exists from "./exists";
 
-const pathDelim = platform === 'win32' ? "\\" : "/";
+const pathDelim = platform === "win32" ? "\\" : "/";
 
 const slnCrawl = async (path: string) => {
   const projectMetadata = await getProjectMetadata(path);
@@ -18,7 +18,6 @@ const slnCrawl = async (path: string) => {
           return;
         }
 
-        
         const csProjFolder = resolve(
           targetPath.split(pathDelim).slice(0, -1).join(pathDelim)
         );
