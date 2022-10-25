@@ -5,7 +5,7 @@ on:
 
 jobs:
   release:
-    uses: oops-i-git-it-again/actions/npm_bump_release.yml@main
+    uses: oops-i-git-it-again/actions/.github/workflows/npm_bump_release.yml@main
     with:
       ref: ${{ github.ref }}
       package_name: sln-crawl
